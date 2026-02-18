@@ -4,77 +4,89 @@
 
 Zero dependencies. Pure Python. `pip install` and go.
 
+[![PyPI version](https://img.shields.io/pypi/v/agent-memory-kit.svg)](https://pypi.org/project/agent-memory-kit/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
+[![Tests](https://github.com/agBythos/agent-memory-kit/actions/workflows/test.yml/badge.svg)](https://github.com/agBythos/agent-memory-kit/actions)
+[![Downloads](https://img.shields.io/pypi/dm/agent-memory-kit.svg)](https://pypi.org/project/agent-memory-kit/)
 
 ---
 
-## The Problem
+## Why?
 
-Every AI agent needs memory. Current solutions make it harder than it should be:
+Every AI agent needs memory. Current solutions are overkill for most use cases:
 
-| Solution | Requires | Human-Readable? | Git-Friendly? |
+| | **agent-memory-kit** | **mem0** | **LangChain Memory** |
 |---|---|---|---|
-| **mem0** | Vector DB, API keys | ❌ | ❌ |
-| **LangChain Memory** | LLM calls, vector store | ❌ | ❌ |
-| **Custom SQLite** | Schema design | ❌ | ❌ |
-| **agent-memory-kit** | **Nothing** | ✅ Markdown | ✅ Diffable |
-
-## The Solution
-
-Your agent's memory is **just Markdown files** in a folder:
-
-```
-memory/
-├── MEMORY.md          ← structured key-value memory
-├── 2026-02-18.md      ← daily log
-└── 2026-02-17.md      ← daily log
-```
-
-You can read it. You can `git diff` it. You can edit it by hand. Your agent can search it with zero infrastructure.
+| Dependencies | **0** (stdlib only) | Redis/Postgres + API keys | LLM provider + vector store |
+| Setup time | **< 1 min** | 15–30 min | 10–20 min |
+| Human-readable | ✅ Markdown files | ❌ DB rows | ❌ Serialized objects |
+| Git-friendly | ✅ Diffable text | ❌ | ❌ |
+| Requires LLM calls | ❌ | ✅ For extraction | ✅ For summarization |
+| Hosting cost | **$0** (local files) | DB hosting | Vector DB hosting |
+| Best for | Agents, prototypes, CLI tools | Production SaaS | LangChain ecosystems |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│              MemoryManager                  │
-│                                             │
-│  remember(key, val, cat)  →  ┌───────────┐ │
-│  recall(query)            ←  │ TextIndex  │ │
-│  daily_log(entry)            │ (fuzzy +   │ │
-│  summarize()                 │  keyword)  │ │
-│  forget(key)                 └─────┬──────┘ │
-│                                    │        │
-└────────────────────────────────────┼────────┘
-                                     │
-                          ┌──────────▼──────────┐
-                          │   Markdown Files    │
-                          │   (human-readable,  │
-                          │    git-friendly)     │
-                          └─────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                 MemoryManager                    │
+│                                                  │
+│  .remember(key, val, cat)                        │
+│  .recall(query)  ──────────►  ┌──────────────┐   │
+│  .forget(key)                 │  TextIndex   │   │
+│  .daily_log(entry)            │  (keyword +  │   │
+│  .summarize()                 │   fuzzy)     │   │
+│  .categories() / .stats()     └──────┬───────┘   │
+│                                      │           │
+└──────────────────────────────────────┼───────────┘
+                                       │
+                            ┌──────────▼──────────┐
+                            │   memory/           │
+                            │   ├── MEMORY.md     │
+                            │   ├── 2026-02-18.md │
+                            │   └── 2026-02-17.md │
+                            │   (plain Markdown)  │
+                            └─────────────────────┘
 ```
 
 ## Quick Start
-
-```python
-from agent_memory_kit import MemoryManager
-
-mem = MemoryManager("./memory")
-mem.remember("user_name", "Alice", "profile")
-mem.daily_log("Completed onboarding flow")
-results = mem.recall("Alice")
-print(results)  # [{'category': 'profile', 'key': 'user_name', 'value': 'Alice', 'score': 0.8}]
-```
-
-That's it. Five lines. No API keys, no Docker, no vector DB.
-
-## Installation
 
 ```bash
 pip install agent-memory-kit
 ```
 
-Or from source:
+```python
+from agent_memory_kit import MemoryManager
+
+mem = MemoryManager("./memory")
+
+# Store
+mem.remember("user_name", "Alice", "profile")
+mem.daily_log("Completed onboarding flow")
+
+# Retrieve
+results = mem.recall("Alice")
+print(results)
+# [{'category': 'profile', 'key': 'user_name', 'value': 'Alice', 'score': 0.8}]
+
+# Forget
+mem.forget("user_name", "profile")
+```
+
+That's it. No API keys, no Docker, no vector DB.
+
+→ See [`examples/basic_usage.py`](examples/basic_usage.py) for a runnable demo.
+
+## Installation
+
+**From PyPI:**
+
+```bash
+pip install agent-memory-kit
+```
+
+**From source:**
 
 ```bash
 git clone https://github.com/agBythos/agent-memory-kit.git
@@ -82,67 +94,52 @@ cd agent-memory-kit
 pip install -e .
 ```
 
+**With dev dependencies (for testing):**
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
 ## API Reference
 
 ### `MemoryManager(base_dir="./memory")`
 
-Create a memory manager. All files are stored under `base_dir/`.
+Create a memory manager. All files stored under `base_dir/`.
 
 ### `.remember(key, value, category="general")`
 
-Store a memory. If `key` already exists in the category, it's updated.
+Store a key-value memory. Updates if key already exists in the category.
 
-```python
-mem.remember("api_endpoint", "https://api.example.com", "config")
-```
+### `.recall(query, *, limit=10, threshold=0.4) → list[dict]`
 
-### `.recall(query, *, limit=10, threshold=0.4)`
+Search memory using keyword matching + fuzzy similarity. Returns matches sorted by relevance.
 
-Search memory using keyword matching + fuzzy similarity. Returns a list of matches sorted by relevance.
+### `.forget(key, category="general") → bool`
 
-```python
-results = mem.recall("api endpoint")
-# [{'category': 'config', 'key': 'api_endpoint', 'value': 'https://api.example.com', 'score': 0.85}]
-```
+Remove a memory entry. Returns `True` if found.
 
-### `.forget(key, category="general")`
+### `.daily_log(entry, *, date=None) → Path`
 
-Remove a memory entry. Returns `True` if found and removed.
+Append a timestamped entry to today's (or specified date's) log file.
 
-```python
-mem.forget("old_key", "config")
-```
-
-### `.daily_log(entry, *, date=None)`
-
-Append a timestamped entry to today's log file (or a specific date).
-
-```python
-mem.daily_log("User asked about refund policy")
-mem.daily_log("Deployed v2.1", date="2026-02-18")
-```
-
-### `.summarize(*, max_per_category=20)`
+### `.summarize(*, max_per_category=20) → dict`
 
 Trim old entries to keep memory lean. Returns `{category: num_removed}`.
 
-```python
-mem.summarize(max_per_category=50)
-```
-
-### `.categories()`
+### `.categories() → list[str]`
 
 List all memory categories.
 
-### `.list(category="general")`
+### `.list(category="general") → list[tuple]`
 
 List all `(key, value)` pairs in a category.
 
-### `.stats()`
+### `.stats() → dict`
 
-Return entry counts per category: `{"config": 5, "profile": 2}`.
+Return entry counts per category.
 
-### `.get_daily_entries(date=None)`
+### `.get_daily_entries(date=None) → list[tuple]`
 
 Read entries from a daily log as `[(timestamp, text), ...]`.
 
@@ -189,12 +186,7 @@ Read entries from a daily log as `[(timestamp, text), ...]`.
 
 ## Contributing
 
-PRs welcome! This project uses only the Python standard library — please keep it that way.
-
-```bash
-pip install -e ".[dev]"
-pytest
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 

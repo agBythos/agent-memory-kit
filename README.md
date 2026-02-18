@@ -2,7 +2,15 @@
 
 **File-based, git-friendly, human-readable memory for AI agents.**
 
-Zero dependencies. Pure Python. `pip install` and go.
+Zero dependencies. Pure Python. Install and go.
+
+```bash
+# From GitHub (recommended)
+pip install git+https://github.com/agBythos/agent-memory-kit.git
+
+# Or from PyPI (coming soon)
+# pip install agent-memory-kit
+```
 
 [![PyPI version](https://img.shields.io/pypi/v/agent-memory-kit.svg)](https://pypi.org/project/agent-memory-kit/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
